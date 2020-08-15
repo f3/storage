@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using Storage.Net.Blob;
-using NetBox.Extensions;
+using Storage.Net.Blobs;
 using System.Linq;
-using Storage.Net.KeyValue;
 using Storage.Net.Messaging;
 
 namespace Storage.Net.ConnectionString
@@ -30,23 +28,14 @@ namespace Storage.Net.ConnectionString
          return Create(connectionString, (factory, cs) => factory.CreateBlobStorage(cs));
       }
 
-      public static IKeyValueStorage CreateKeyValueStorage(string connectionString)
+      public static IMessenger CreateMessager(string connectionString)
       {
-         return Create(connectionString, (factory, cs) => factory.CreateKeyValueStorage(cs));
-      }
-
-      public static IMessagePublisher CreateMessagePublisher(string connectionString)
-      {
-         return Create(connectionString, (factory, cs) => factory.CreateMessagePublisher(cs));
-      }
-
-      public static IMessageReceiver CreateMessageReceiver(string connectionString)
-      {
-         return Create(connectionString, (factory, cs) => factory.CreateMessageReceiver(cs));
+         return Create(connectionString, (factory, cs) => factory.CreateMessenger(cs));
       }
 
 
       private static TInstance Create<TInstance>(string connectionString, Func<IConnectionFactory, StorageConnectionString, TInstance> createAction)
+         where TInstance: class
       {
          if (connectionString == null)
          {
@@ -57,8 +46,7 @@ namespace Storage.Net.ConnectionString
 
          TInstance instance = Factories
             .Select(f => createAction(f, pcs))
-            .Where(b => b != null)
-            .FirstOrDefault();
+            .FirstOrDefault(b => b != null);
 
          if (instance == null)
          {

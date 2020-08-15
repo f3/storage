@@ -2,14 +2,15 @@
 using Microsoft.ServiceFabric.Data.Collections;
 using NetBox;
 using NetBox.Extensions;
-using Storage.Net.Blob;
+using Storage.Net.Blobs;
+using Storage.Net.Streaming;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Storage.Net.Microsoft.ServiceFabric.Blob
+namespace Storage.Net.Microsoft.ServiceFabric.Blobs
 {
    class ServiceFabricReliableDictionaryBlobStorageProvider : IBlobStorage
    {
@@ -23,28 +24,28 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
          _collectionName = collectionName ?? throw new ArgumentNullException(nameof(collectionName));
       }
 
-      public async Task<IReadOnlyCollection<BlobId>> ListAsync(ListOptions options, CancellationToken cancellationToken)
+      public async Task<IReadOnlyCollection<Blob>> ListAsync(ListOptions options, CancellationToken cancellationToken)
       {
          if (options == null) options = new ListOptions();
 
-         var result = new List<BlobId>();
+         var result = new List<Blob>();
 
          using (ServiceFabricTransaction tx = GetTransaction())
          {
-            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync();
+            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync().ConfigureAwait(false);
 
-            IAsyncEnumerable<KeyValuePair<string, byte[]>> enumerable =
-               await coll.CreateEnumerableAsync(tx.Tx);
+            global::Microsoft.ServiceFabric.Data.IAsyncEnumerable<KeyValuePair<string, byte[]>> enumerable =
+               await coll.CreateEnumerableAsync(tx.Tx).ConfigureAwait(false);
 
-            using (IAsyncEnumerator<KeyValuePair<string, byte[]>> enumerator = enumerable.GetAsyncEnumerator())
+            using (global::Microsoft.ServiceFabric.Data.IAsyncEnumerator<KeyValuePair<string, byte[]>> enumerator = enumerable.GetAsyncEnumerator())
             {
-               while (await enumerator.MoveNextAsync(cancellationToken))
+               while (await enumerator.MoveNextAsync(cancellationToken).ConfigureAwait(false))
                {
                   KeyValuePair<string, byte[]> current = enumerator.Current;
 
                   if (options.FilePrefix == null || current.Key.StartsWith(options.FilePrefix))
                   {
-                     result.Add(new BlobId(current.Key, BlobItemKind.File));
+                     result.Add(new Blob(current.Key, BlobItemKind.File));
                   }
                }
             }
@@ -53,35 +54,31 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
          return result;
       }
 
-      public async Task WriteAsync(string id, Stream sourceStream, bool append, CancellationToken cancellationToken)
+      public async Task WriteAsync(string fullPath, Stream dataStream,
+         bool append, CancellationToken cancellationToken = default)
       {
-         GenericValidation.CheckBlobId(id);
+         GenericValidation.CheckBlobFullPath(fullPath);
 
-         if (append)
+         if(append)
          {
-            await AppendAsync(id, sourceStream, cancellationToken);
+            await AppendAsync(fullPath, dataStream, cancellationToken).ConfigureAwait(false);
          }
          else
          {
-            await WriteAsync(id, sourceStream, cancellationToken);
+            await WriteAsync(fullPath, dataStream, cancellationToken).ConfigureAwait(false);
          }
       }
 
-      public Task<Stream> OpenWriteAsync(string id, bool append, CancellationToken cancellationToken)
+      private async Task WriteAsync(Blob blob, Stream sourceStream, CancellationToken cancellationToken)
       {
-         throw new NotImplementedException();
-      }
-
-      private async Task WriteAsync(string id, Stream sourceStream, CancellationToken cancellationToken)
-      {
-         id = ToId(id);
+         string fullPath = ToFullPath(blob);
 
          byte[] value = sourceStream.ToByteArray();
 
          using (ServiceFabricTransaction tx = GetTransaction())
          {
-            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync();
-            IReliableDictionary<string, BlobMetaTag> metaColl = await OpenMetaCollectionAsync();
+            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync().ConfigureAwait(false);
+            IReliableDictionary<string, BlobMetaTag> metaColl = await OpenMetaCollectionAsync().ConfigureAwait(false);
 
             var meta = new BlobMetaTag
             {
@@ -90,24 +87,24 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
                Md = value.GetHash(HashType.Md5).ToHexString()
             };
 
-            await metaColl.AddOrUpdateAsync(tx.Tx, id, meta, (k, v) => meta);
-            await coll.AddOrUpdateAsync(tx.Tx, id, value, (k, v) => value);
+            await metaColl.AddOrUpdateAsync(tx.Tx, fullPath, meta, (k, v) => meta).ConfigureAwait(false);
+            await coll.AddOrUpdateAsync(tx.Tx, fullPath, value, (k, v) => value).ConfigureAwait(false);
 
-            await tx.CommitAsync();
+            await tx.CommitAsync().ConfigureAwait(false);
          }
       }
 
-      private async Task AppendAsync(string id, Stream sourceStream, CancellationToken cancellationToken)
+      private async Task AppendAsync(string fullPath, Stream sourceStream, CancellationToken cancellationToken)
       {
-         id = ToId(id);
+         fullPath = ToFullPath(fullPath);
 
          using (ServiceFabricTransaction tx = GetTransaction())
          {
-            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync();
+            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync().ConfigureAwait(false);
 
             //create a new byte array with
             byte[] extra = sourceStream.ToByteArray();
-            ConditionalValue<byte[]> value = await coll.TryGetValueAsync(tx.Tx, id);
+            ConditionalValue<byte[]> value = await coll.TryGetValueAsync(tx.Tx, fullPath).ConfigureAwait(false);
             int oldLength = value.HasValue ? value.Value.Length : 0;
             byte[] newData = new byte[oldLength + extra.Length];
             if(value.HasValue)
@@ -117,22 +114,22 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
             Array.Copy(extra, 0, newData, oldLength, extra.Length);
 
             //put new array into the key
-            await coll.AddOrUpdateAsync(tx.Tx, id, extra, (k, v) => extra);
+            await coll.AddOrUpdateAsync(tx.Tx, fullPath, extra, (k, v) => extra).ConfigureAwait(false);
 
             //commit the transaction
-            await tx.CommitAsync();
+            await tx.CommitAsync().ConfigureAwait(false);
          }
       }
 
       public async Task<Stream> OpenReadAsync(string id, CancellationToken cancellationToken)
       {
-         GenericValidation.CheckBlobId(id);
-         id = ToId(id);
+         GenericValidation.CheckBlobFullPath(id);
+         id = ToFullPath(id);
 
          using (ServiceFabricTransaction tx = GetTransaction())
          {
-            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync();
-            ConditionalValue<byte[]> value = await coll.TryGetValueAsync(tx.Tx, id);
+            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync().ConfigureAwait(false);
+            ConditionalValue<byte[]> value = await coll.TryGetValueAsync(tx.Tx, id).ConfigureAwait(false);
 
             if (!value.HasValue) throw new StorageException(ErrorCode.NotFound, null);
 
@@ -140,35 +137,35 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
          }
       }
 
-      public async Task DeleteAsync(IEnumerable<string> ids, CancellationToken cancellationToken)
+      public async Task DeleteAsync(IEnumerable<string> fullPaths, CancellationToken cancellationToken)
       {
-         GenericValidation.CheckBlobId(ids);
+         GenericValidation.CheckBlobFullPaths(fullPaths);
 
          using (ServiceFabricTransaction tx = GetTransaction())
          {
-            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync();
+            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync().ConfigureAwait(false);
 
-            foreach (string id in ids)
+            foreach (string fullPath in fullPaths)
             {
-               await coll.TryRemoveAsync(tx.Tx, ToId(id));
+               await coll.TryRemoveAsync(tx.Tx, ToFullPath(fullPath)).ConfigureAwait(false);
             }
 
-            await tx.CommitAsync();
+            await tx.CommitAsync().ConfigureAwait(false);
          }
       }
 
-      public async Task<IReadOnlyCollection<bool>> ExistsAsync(IEnumerable<string> ids, CancellationToken cancellationToken)
+      public async Task<IReadOnlyCollection<bool>> ExistsAsync(IEnumerable<string> fullPaths, CancellationToken cancellationToken)
       {
-         GenericValidation.CheckBlobId(ids);
+         GenericValidation.CheckBlobFullPaths(fullPaths);
 
          var result = new List<bool>();
          using (ServiceFabricTransaction tx = GetTransaction())
          {
-            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync();
+            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync().ConfigureAwait(false);
 
-            foreach (string id in ids)
+            foreach (string fullPath in fullPaths)
             {
-               bool exists = await coll.ContainsKeyAsync(tx.Tx, ToId(id));
+               bool exists = await coll.ContainsKeyAsync(tx.Tx, ToFullPath(fullPath)).ConfigureAwait(false);
 
                result.Add(exists);
             }
@@ -176,19 +173,19 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
          return result;
       }
 
-      public async Task<IEnumerable<BlobMeta>> GetMetaAsync(IEnumerable<string> ids, CancellationToken cancellationToken)
+      public async Task<IReadOnlyCollection<Blob>> GetBlobsAsync(IEnumerable<string> fullPaths, CancellationToken cancellationToken)
       {
-         GenericValidation.CheckBlobId(ids);
+         GenericValidation.CheckBlobFullPaths(fullPaths);
 
-         var result = new List<BlobMeta>();
+         var result = new List<Blob>();
 
          using (ServiceFabricTransaction tx = GetTransaction())
          {
-            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync();
+            IReliableDictionary<string, byte[]> coll = await OpenCollectionAsync().ConfigureAwait(false);
 
-            foreach (string id in ids)
+            foreach (string fullPath in fullPaths)
             {
-               ConditionalValue<byte[]> value = await coll.TryGetValueAsync(tx.Tx, ToId(id));
+               ConditionalValue<byte[]> value = await coll.TryGetValueAsync(tx.Tx, ToFullPath(fullPath)).ConfigureAwait(false);
 
                if (!value.HasValue)
                {
@@ -196,7 +193,10 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
                }
                else
                {
-                  var meta = new BlobMeta(value.Value.Length, null, null);
+                  var meta = new Blob(fullPath)
+                  {
+                     Size = value.Value.Length
+                  };
                   result.Add(meta);
                }
             }
@@ -204,10 +204,15 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
          return result;
       }
 
+      public Task SetBlobsAsync(IEnumerable<Blob> blobs, CancellationToken cancellationToken = default)
+      {
+         throw new NotSupportedException();
+      }
+
       private async Task<IReliableDictionary<string, byte[]>> OpenCollectionAsync()
       {
          IReliableDictionary<string, byte[]> collection = 
-            await _stateManager.GetOrAddAsync<IReliableDictionary<string, byte[]>>(_collectionName);
+            await _stateManager.GetOrAddAsync<IReliableDictionary<string, byte[]>>(_collectionName).ConfigureAwait(false);
 
          return collection;
       }
@@ -215,7 +220,7 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
       private async Task<IReliableDictionary<string, BlobMetaTag>> OpenMetaCollectionAsync()
       {
          IReliableDictionary<string, BlobMetaTag> collection =
-            await _stateManager.GetOrAddAsync<IReliableDictionary<string, BlobMetaTag>>(_collectionName + "_meta");
+            await _stateManager.GetOrAddAsync<IReliableDictionary<string, BlobMetaTag>>(_collectionName + "_meta").ConfigureAwait(false);
 
          return collection;
       }
@@ -243,16 +248,13 @@ namespace Storage.Net.Microsoft.ServiceFabric.Blob
 
       private void CloseTransaction(bool b)
       {
-         if(_currentTransaction != null)
-         {
-            //dispose on transaction is already called!
-            _currentTransaction = null;
-         }
+         //dispose on transaction is already called!
+         _currentTransaction = null;
       }
 
-      private string ToId(string id)
+      private string ToFullPath(string fullPath)
       {
-         return StoragePath.Normalize(id, false);
+         return StoragePath.Normalize(fullPath);
       }
    }
 }

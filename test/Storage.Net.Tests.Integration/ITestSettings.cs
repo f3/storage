@@ -4,91 +4,126 @@ using Config.Net;
 
 namespace Storage.Net.Tests
 {
-    public interface ITestSettings
-    {
-        #region [ Azure ]
+   public interface ITestSettings
+   {
+      [Option(DefaultValue = "aloneguid")]
+      string DevOpsOrgName { get; }
 
-        [Option(Alias = "Azure.Storage.Name")]
-        string AzureStorageName { get; }
+      [Option(DefaultValue = "AllPublic")]
+      string DevOpsProject { get; }
 
-        [Option(Alias = "Azure.Storage.Key")]
-        string AzureStorageKey { get; }
+      [Option(DefaultValue = "8")]
+      string DevOpsVariableSetId { get; }
 
-        [Option(Alias = "Azure.Storage.QueueName", DefaultValue = "local")]
-        string AzureStorageQueueName { get; }
+      string DevOpsPat { get; }
 
-        [Option(Alias = "Azure.Storage.ContainerSasUri")]
-        Uri AzureContainerSasUri { get; }
+      string ClientId { get; }
 
-        [Option(Alias = "Azure.ServiceBus.ConnectionString")]
-        string ServiceBusConnectionString { get; }
+      string ClientSecret { get; }
 
-        [Option(DefaultValue = "testqueuelocal")]
-        string ServiceBusQueueName { get; }
+      string TenantId { get; }
 
-        [Option(DefaultValue = "testtopiclocal")]
-        string ServiceBusTopicName { get; }
+      #region [ Azure ]
 
-        [Option(Alias = "Azure.EventHub.ConnectionString")]
-        string EventHubConnectionString { get; }
+      string AzureStorageName { get; }
 
-        [Option(Alias = "Azure.EventHub.Path")]
-        string EventHubPath { get; }
+      string AzureStorageKey { get; }
 
-        [Option(Alias = "Azure.DataLake.TenantId")]
-        string AzureDataLakeTenantId { get; }
+      string AzureGen2StorageName { get; }
 
-        [Option(Alias = "Azure.DataLake.PrincipalId")]
-        string AzureDataLakePrincipalId { get; }
+      string AzureGen2StorageKey { get; }
 
-        [Option(Alias = "Azure.DataLake.PrincipalSecret")]
-        string AzureDataLakePrincipalSecret { get; }
+      string OperatorObjectId { get; }
 
-        [Option(Alias = "Azure.DataLake.Store.AccountName")]
-        string AzureDataLakeStoreAccountName { get; }
+      string AzureServiceBusConnectionString { get; }
 
-        [Option(Alias = "Azure.DataLake.SubscriptionId")]
-        string AzureDataLakeSubscriptionId { get; }
+      string AzureEventHubConnectionString { get; }
 
-        [Option(Alias = "Azure.KeyVault.Uri")]
-        Uri KeyVaultUri { get; }
+      string AzureStorageNativeConnectionString { get; }
 
-        [Option(Alias = "Azure.KeyVault.Creds")]
-        NetworkCredential KeyVaultCreds { get; }
+      string AzureGen1StorageName { get; }
 
-        #endregion
+      Uri AzureKeyVaultUri { get; }
 
-        #region [ Amazon Web Services ]
+      #endregion
 
-        [Option(Alias = "Aws.AccessKeyId")]
-        string AwsAccessKeyId { get; }
+      #region [ Amazon Web Services ]
 
-        [Option(Alias = "Aws.SecretAccessKey")]
-        string AwsSecretAccessKey { get; }
+      [Option(Alias = "Aws.AccessKeyId")]
+      string AwsAccessKeyId { get; }
 
-        [Option(Alias = "Aws.TestBucketName")]
-        string AwsTestBucketName { get; }
+      [Option(Alias = "Aws.SecretAccessKey")]
+      string AwsSecretAccessKey { get; }
 
-        #endregion
+      [Option(Alias = "Aws.TestBucketName")]
+      string AwsTestBucketName { get; }
 
-        #region [ MSSQL ]
+      [Option(Alias = "Aws.TestBucketRegion", DefaultValue = "eu-west-1")]
+      string AwsTestBucketRegion { get; }
 
-        [Option(Alias = "Mssql.ConnectionString")]
-        string MssqlConnectionString { get; }
+      #endregion
 
-        #endregion
+      #region [ Google Cloud Platform ]
 
-        #region [ General ]
+      [Option(Alias = "Gcp.Storage.BucketName")]
+      string GcpStorageBucketName { get; }
 
-        [Option(Alias = "Ftp.Hostname")]
-        string FtpHostName { get; }
+      [Option(Alias = "Gcp.Storage.JsonKey")]
+      string GcpStorageJsonCreds { get; }
 
-        [Option(Alias = "Ftp.Username")]
-        string FtpUsername { get; }
+      #endregion
 
-        [Option(Alias = "Ftp.Password")]
-        string FtpPassword { get; }
 
-        #endregion
-    }
+      #region [ MSSQL ]
+
+      [Option(Alias = "Mssql.ConnectionString")]
+      string MssqlConnectionString { get; }
+
+      #endregion
+
+      #region [ General ]
+
+      [Option(Alias = "Ftp.Hostname")]
+      string FtpHostName { get; }
+
+      [Option(Alias = "Ftp.Username")]
+      string FtpUsername { get; }
+
+      [Option(Alias = "Ftp.Password")]
+      string FtpPassword { get; }
+
+      #endregion
+
+      string DatabricksBaseUri { get; set; }
+
+      string DatabricksToken { get; set; }
+   }
+
+   public static class Settings
+   {
+      private static ITestSettings _instance;
+
+      public static ITestSettings Instance
+      {
+         get
+         {
+            if(_instance == null)
+            {
+               _instance = new ConfigurationBuilder<ITestSettings>()
+                  .UseIniFile("c:\\tmp\\integration-tests.ini")
+                  .UseEnvironmentVariables()
+                  .Build();
+
+               _instance = new ConfigurationBuilder<ITestSettings>()
+                  .UseIniFile("c:\\tmp\\integration-tests.ini")
+                  //.UseAzureDevOpsVariableSet(_instance.DevOpsOrgName, _instance.DevOpsProject, _instance.DevOpsPat, _instance.DevOpsVariableSetId)
+                  .UseEnvironmentVariables()
+                  .Build();
+
+            }
+
+            return _instance;
+         }
+      }
+   }
 }

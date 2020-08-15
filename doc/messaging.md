@@ -6,7 +6,9 @@ This page lists messaging providers available in Storage.Net
 
 - [In-Memory](#inmemory)
 - [Local Disk](#local-disk)
+- [Azure Storage Queue](#azure-storage-queue)
 - [Azure Service Bus](#azure-service-bus)
+- [Amazon Simple Queue](#amazon-simple-queue)
 
 ### In-Memory
 
@@ -56,6 +58,20 @@ To construct from a connection string, use:
 IMessagePublisher publisher = StorageFactory.Messages.PublisherFromConnectionString("disk://path=the_path");
 
 IMessageReceiver receiver = StorageFactory.Messages.ReceiverFromConnectionString("disk://path=the_path");
+```
+
+### Azure Storage Queue
+
+```csharp
+IMessagePublisher publisher = StorageFactory.Messages.AzureStorageQueuePublisher();
+
+IMessageReceiver receiver = StorageFactory.Messages.AzureStorageQueueReceiver();
+```
+
+```csharp
+IMessagePublisher publisher = StorageFactory.Messages.PublisherFromConnectionString("azure.queue://account=...;key=...;queue=...");
+
+IMessageReceiver receiver = StorageFactory.Messages.ReceiverFromConnectionString("azure.queue://account=..;key=...;queue=...");
 ```
 
 ### Azure Service Bus
@@ -117,3 +133,34 @@ IMessageReceiver topicReceiver = StorageFactory.Messages.AzureServiceBusTopicRec
 ```
 
 Note that exception handler in Service Bus is for *informational purposes only*, it doesn't actually handle exceptions, and in case of errors the SDK [retries them automatically](https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.servicebus.messagehandleroptions.exceptionreceivedhandler?view=azure-dotnet#Microsoft_Azure_ServiceBus_MessageHandlerOptions_ExceptionReceivedHandler).
+
+
+
+### Amazon Simple Queue
+
+In order to use [Amazon Simple Queue](https://aws.amazon.com/sqs/) you need to reference
+[![NuGet](https://img.shields.io/nuget/v/Storage.Net.Amazon.Aws.svg)](https://www.nuget.org/packages/Storage.Net.Amazon.Aws/) first. The provider wraps around the standard AWS SDK.
+
+To construct a publisher use the following:
+
+```csharp
+IMessagePublisher queuePublisher = StorageFactory.Messages.AmazonSQSMessagePublisher(
+  accessKeyId,
+  secretAccessKey,
+  serviceUrl,
+  queueName,
+  regionEndpoint);
+
+IMessagePublisher topicPublisher = StorageFactory.Messages.AmazonSQSMessageReceiver(
+  accessKeyId,
+  secretAccessKey,
+  serviceUrl,
+  queueName,
+  regionEndpoint);
+```
+
+- **accessKeyId** and **secretAccessKey*) are credentials to access the queue.
+- **serviceUrl** indicates the service URL, for instance `https://sqs.us-east-1.amazonaws.com`
+- **queueName** is the name of the queue
+- **retionEndpoint** is optional and defaults to `USEast1`
+

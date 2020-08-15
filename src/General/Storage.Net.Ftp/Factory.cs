@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net;
 using FluentFTP;
-using Storage.Net.Blob;
+using Storage.Net.Blobs;
 using Storage.Net.ConnectionString;
 using Storage.Net.Ftp;
 
@@ -26,9 +26,10 @@ namespace Storage.Net
       /// Constructs an instance of FTP client from host name and credentials
       /// </summary>
       public static IBlobStorage Ftp(this IBlobStorageFactory factory,
-         string hostNameOrAddress, NetworkCredential credentials)
+         string hostNameOrAddress, NetworkCredential credentials,
+         FtpDataConnectionType dataConnectionType = FtpDataConnectionType.AutoActive)
       {
-         return new FluentFtpBlobStorage(hostNameOrAddress, credentials);
+         return new FluentFtpBlobStorage(hostNameOrAddress, credentials, dataConnectionType);
       }
 
       /// <summary>

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace Storage.Net
 {
@@ -20,14 +21,14 @@ namespace Storage.Net
       public static readonly string PathSeparatorString = new string(PathSeparator, 1);
 
       /// <summary>
-      /// Character used to split paths 
-      /// </summary>
-      public static string PathStrSeparator = new string(PathSeparator, 1);
-
-      /// <summary>
       /// Returns '/'
       /// </summary>
       public static readonly string RootFolderPath = "/";
+
+      /// <summary>
+      /// Folder name for leveling up the path
+      /// </summary>
+      public static readonly string LevelUpFolderName = "..";
 
       /// <summary>
       /// Combines parts of path
@@ -38,22 +39,24 @@ namespace Storage.Net
       {
          if (parts == null) return Normalize(null);
 
-         return Normalize(string.Join(PathStrSeparator, parts.Where(p => p != null).Select(p => NormalizePart(p))));
+         return Normalize(string.Join(PathSeparatorString, parts.Where(p => p != null).Select(p => NormalizePart(p))));
       }
 
       /// <summary>
-      /// Gets parent path of this item
+      /// Gets parent path of this item.
       /// </summary>
       public static string GetParent(string path)
       {
          if (path == null) return null;
+
+         path = Normalize(path);
 
          string[] parts = Split(path);
          if (parts.Length == 0) return null;
 
          return parts.Length > 1
             ? Combine(parts.Take(parts.Length - 1))
-            : PathStrSeparator;
+            : PathSeparatorString;
       }
 
       /// <summary>
@@ -68,20 +71,38 @@ namespace Storage.Net
 
       /// <summary>
       /// Normalizes path. Normalisation makes sure that:
-      /// - When path is null returns root path '/'
+      /// - When path is null or empty returns root path '/'
       /// - path separators are trimmed from both ends
       /// </summary>
       /// <param name="path"></param>
-      /// <param name="includeTrailingRoot">When true, includes trailing '/' as path prefix</param>
-      public static string Normalize(string path, bool includeTrailingRoot = false)
+      /// <param name="removeTrailingSlash"></param>
+      public static string Normalize(string path, bool removeTrailingSlash = false)
       {
-         if (path == null) return RootFolderPath;
+         if (StoragePath.IsRootPath(path)) return RootFolderPath;
 
-         path = path.Trim(PathSeparator);
+         string[] parts = Split(path);
 
-         return includeTrailingRoot ?
-            PathSeparatorString + path
-            : path;
+         var r = new List<string>(parts.Length);
+         foreach(string part in parts)
+         {
+            if(part == LevelUpFolderName)
+            {
+               if(r.Count > 0)
+               {
+                  r.RemoveAt(r.Count - 1);
+               }
+            }
+            else
+            {
+               r.Add(part);
+            }
+
+         }
+         path = string.Join(PathSeparatorString, r);
+
+         return removeTrailingSlash
+            ? path
+            : PathSeparatorString + path;
       }
 
       /// <summary>
@@ -98,7 +119,8 @@ namespace Storage.Net
 
       /// <summary>
       /// Splits path in parts. Leading and trailing path separators are totally ignored. Note that it returns
-      /// null if input path is null.
+      /// null if input path is null. Parent folder signatures are returned as a part of split, they are not removed.
+      /// If you want to get an absolute normalized path use <see cref="Normalize(string, bool)"/>
       /// </summary>
       public static string[] Split(string path)
       {
@@ -116,11 +138,52 @@ namespace Storage.Net
       }
 
       /// <summary>
+      /// Gets the root folder name
+      /// </summary>
+      public static string GetRootFolder(string path)
+      {
+         string[] parts = Split(path);
+         if(parts.Length == 1)
+            return null;
+
+         return parts[0];
+      }
+
+      /// <summary>
+      /// Removes root folder from path
+      /// </summary>
+      public static string RemoveRootFolder(string path)
+      {
+         string[] parts = Split(path);
+         if(parts.Length == 1)
+            return path;
+
+         return Combine(parts.Skip(1));
+
+      }
+
+      /// <summary>
       /// Compare that two path entries are equal. This takes into account path entries which are slightly different as strings but identical in physical location.
       /// </summary>
       public static bool ComparePath(string path1, string path2)
       {
          return Normalize(path1) == Normalize(path2);
+      }
+
+      /// <summary>
+      /// Replace file name
+      /// </summary>
+      /// <param name="path"></param>
+      /// <param name="newFileName"></param>
+      /// <returns></returns>
+      public static string Rename(string path, string newFileName)
+      {
+         string[] parts = Split(path);
+
+         if(parts.Length == 1)
+            return newFileName;
+
+         return Combine(Combine(parts.Take(parts.Length - 1)), newFileName);
       }
    }
 }

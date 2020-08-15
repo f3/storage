@@ -80,6 +80,11 @@ namespace Storage.Net.Messaging
       public int DequeueCount { get; set; }
 
       /// <summary>
+      /// When present, indicates time when this message becomes visible again
+      /// </summary>
+      public DateTimeOffset? NextVisibleTime { get; set; }
+
+      /// <summary>
       /// Message content as string
       /// </summary>
       public string StringContent
@@ -142,7 +147,7 @@ namespace Storage.Net.Messaging
                //Content
                if (Content == null)
                {
-                  b.Write((int)0);
+                  b.Write(0);
                }
                else
                {
@@ -153,7 +158,7 @@ namespace Storage.Net.Messaging
                //properties
                if(_properties == null)
                {
-                  b.Write((int)0);
+                  b.Write(0);
                }
                else
                {

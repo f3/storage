@@ -13,6 +13,10 @@ namespace Storage.Net.Microsoft.Azure.ServiceBus
             throw new ArgumentNullException(nameof(message));
 
          var result = new Message(message.Content);
+         if(message.Id != null)
+         {
+            result.MessageId = message.Id;
+         }
          if(message.Properties != null && message.Properties.Count > 0)
          {
             foreach(KeyValuePair<string, string> prop in message.Properties)
@@ -28,6 +32,7 @@ namespace Storage.Net.Microsoft.Azure.ServiceBus
          string id = message.MessageId ?? message.SystemProperties.SequenceNumber.ToString();
 
          var result = new QueueMessage(id, message.Body);
+         result.DequeueCount = message.SystemProperties.DeliveryCount;
          if(message.UserProperties != null && message.UserProperties.Count > 0)
          {
             foreach(KeyValuePair<string, object> pair in message.UserProperties)

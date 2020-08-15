@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using NetBox.Extensions;
 
 namespace Storage.Net.ConnectionString
 {
@@ -14,6 +16,7 @@ namespace Storage.Net.ConnectionString
       private static readonly char[] PartSeparator = new[] { '=' };
 
       private readonly Dictionary<string, string> _parts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+      private string _nativeConnectionString;
 
       /// <summary>
       /// Creates a new instance of <see cref="StorageConnectionString"/>
@@ -27,9 +30,47 @@ namespace Storage.Net.ConnectionString
       }
 
       /// <summary>
+      /// Gets or sets connection string parameters
+      /// </summary>
+      /// <param name="key"></param>
+      /// <returns></returns>
+      public string this[string key]
+      {
+         get
+         {
+            if(key == null)
+               return null;
+            _parts.TryGetValue(key, out string value);
+            return value;
+         }
+         set
+         {
+            if(key == null)
+               return;
+
+            _parts[key] = value;
+         }
+      }
+
+      /// <summary>
+      /// Determines if this is a native connection string
+      /// </summary>
+      public bool IsNative => _nativeConnectionString != null;
+
+      /// <summary>
+      /// Returns native connection string, or null if connection string is not native
+      /// </summary>
+      public string Native => _nativeConnectionString;
+
+      /// <summary>
       /// Original connection string
       /// </summary>
       public string ConnectionString { get; private set; }
+
+      /// <summary>
+      /// Connection string parameters exposed as key-value pairs
+      /// </summary>
+      public Dictionary<string, string> Parameters => _parts;
 
       /// <summary>
       /// Prefix of this connection string, excluding prefix separator, i.e. for 'disk://something' the prefix is 'disk'
@@ -64,11 +105,12 @@ namespace Storage.Net.ConnectionString
       /// Get connection string parameter by name
       /// </summary>
       /// <param name="parameterName"></param>
-      /// <returns>Parameter value. If parameter is not set returns an empty string</returns>
+      /// <returns>Parameter value. If parameter is not set returns null.</returns>
       public string Get(string parameterName)
       {
-         if (parameterName == null) return string.Empty;
-         if (!_parts.TryGetValue(parameterName, out string value)) return string.Empty;
+         if(parameterName == null)
+            return null;
+         if (!_parts.TryGetValue(parameterName, out string value)) return null;
          return value;
       }
 
@@ -78,7 +120,8 @@ namespace Storage.Net.ConnectionString
 
          if(idx == -1)
          {
-            throw new ArgumentException($"prefix separator ({PrefixSeparator}) not present", nameof(connectionString));
+            Prefix = connectionString;
+            return;
          }
 
          Prefix = connectionString.Substring(0, idx);
@@ -86,15 +129,65 @@ namespace Storage.Net.ConnectionString
 
          // prefix extracted, now get the parts of the string
 
-         string[] parts = connectionString.Split(PartsSeparators, StringSplitOptions.RemoveEmptyEntries);
-         foreach(string part in parts)
+         //check if this is a native connection string
+         if(connectionString.StartsWith(KnownParameter.Native + "="))
          {
-            string[] kv = part.Split(PartSeparator, 2);
-
-            string key = kv[0];
-            string value = kv.Length == 1 ? string.Empty : kv[1];
-            _parts[key] = value;
+            _nativeConnectionString = connectionString.Substring(KnownParameter.Native.Length + 1);
+            _parts[KnownParameter.Native] = _nativeConnectionString;
          }
+         else
+         {
+            string[] parts = connectionString.Split(PartsSeparators, StringSplitOptions.RemoveEmptyEntries);
+            foreach(string part in parts)
+            {
+               string[] kv = part.Split(PartSeparator, 2);
+
+               string key = kv[0];
+               string value = kv.Length == 1 ? string.Empty : kv[1];
+               _parts[key] = value.UrlDecode();
+            }
+         }
+      }
+
+      /// <summary>
+      /// Returns a string representation of the connection string
+      /// </summary>
+      /// <returns></returns>
+      public override string ToString()
+      {
+         var sb = new StringBuilder();
+         sb.Append(Prefix);
+         sb.Append(PrefixSeparator);
+
+         if(IsNative)
+         {
+            sb.Append(KnownParameter.Native);
+            sb.Append(PartSeparator);
+            sb.Append(Native);
+         }
+         else
+         {
+
+            bool first = true;
+            foreach(KeyValuePair<string, string> pair in _parts)
+            {
+               if(first)
+               {
+                  first = false;
+               }
+               else
+               {
+                  sb.Append(PartsSeparators);
+                  first = false;
+               }
+
+               sb.Append(pair.Key);
+               sb.Append(PartSeparator);
+               sb.Append(pair.Value.UrlEncode());
+            }
+         }
+
+         return sb.ToString();
       }
    }
 }

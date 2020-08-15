@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NetBox.Extensions;
+using Storage.Net.Messaging.Polling;
 
 namespace Storage.Net.Messaging
 {
@@ -11,40 +12,30 @@ namespace Storage.Net.Messaging
    /// </summary>
    public abstract class PollingMessageReceiver : IMessageReceiver
    {
-      private readonly int _pollIntervalSeconds;
+      private readonly IPollingPolicy _pollingPolicy;
 
       /// <summary>
-      /// 
+      ///
       /// </summary>
-      /// <param name="pollIntervalSeconds">Poll interval, defaults to one second</param>
-      protected PollingMessageReceiver(int pollIntervalSeconds = 1)
+      protected PollingMessageReceiver()
       {
-         _pollIntervalSeconds = pollIntervalSeconds;
+         _pollingPolicy = new ExponentialBackoffPollingPolicy(TimeSpan.FromMilliseconds(100), TimeSpan.FromMinutes(15));
       }
 
       /// <summary>
       /// See interface
       /// </summary>
-      public virtual Task<int> GetMessageCountAsync()
-      {
-         throw new NotSupportedException();
-      }
+      public abstract Task<int> GetMessageCountAsync();
 
       /// <summary>
       /// See interface
       /// </summary>
-      public virtual Task ConfirmMessagesAsync(IReadOnlyCollection<QueueMessage> messages, CancellationToken cancellationToken = default)
-      {
-         throw new NotSupportedException();
-      }
+      public abstract Task ConfirmMessagesAsync(IReadOnlyCollection<QueueMessage> messages, CancellationToken cancellationToken = default);
 
       /// <summary>
       /// See interface
       /// </summary>
-      public virtual Task DeadLetterAsync(QueueMessage message, string reason, string errorDescription, CancellationToken cancellationToken = default)
-      {
-         throw new NotSupportedException();
-      }
+      public abstract Task DeadLetterAsync(QueueMessage message, string reason, string errorDescription, CancellationToken cancellationToken = default);
 
       /// <summary>
       /// See interface
@@ -65,33 +56,85 @@ namespace Storage.Net.Messaging
                               /// <summary>
                               /// See interface
                               /// </summary>
-      public async Task StartMessagePumpAsync(Func<IReadOnlyCollection<QueueMessage>, Task> onMessageAsync, int maxBatchSize = 1, CancellationToken cancellationToken = default)
+      public Task StartMessagePumpAsync(Func<IReadOnlyCollection<QueueMessage>, CancellationToken, Task> onMessageAsync, int maxBatchSize = 1, CancellationToken cancellationToken = default)
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
       {
          if (onMessageAsync == null) throw new ArgumentNullException(nameof(onMessageAsync));
 
-         PollTasksAsync(onMessageAsync, maxBatchSize, cancellationToken).Forget();
+         Task.Factory.StartNew(() => PollTasksAsync(onMessageAsync, maxBatchSize, cancellationToken), TaskCreationOptions.LongRunning);
+
+         return Task.FromResult(true);
       }
 
-      private async Task PollTasksAsync(Func<IReadOnlyCollection<QueueMessage>, Task> callback, int maxBatchSize, CancellationToken cancellationToken)
+      private async Task PollTasksAsync(Func<IReadOnlyCollection<QueueMessage>, CancellationToken, Task> callback, int maxBatchSize, CancellationToken cancellationToken)
       {
-         IReadOnlyCollection<QueueMessage> messages = await ReceiveMessagesAsync(maxBatchSize, cancellationToken);
-         while (messages != null && messages.Count > 0)
+         try
          {
-            await callback(messages);
+            IReadOnlyCollection<QueueMessage> messages = await ReceiveMessagesSafeAsync(maxBatchSize, cancellationToken).ConfigureAwait(false);
+            while(messages != null && messages.Count > 0)
+            {
+               await callback(messages, cancellationToken).ConfigureAwait(false);
 
-            messages = await ReceiveMessagesAsync(maxBatchSize, cancellationToken);
+               messages = await ReceiveMessagesSafeAsync(maxBatchSize, cancellationToken).ConfigureAwait(false);
+
+               _pollingPolicy.Reset();
+            }
+
+            await Task.Delay(_pollingPolicy.GetNextDelay(), cancellationToken).ContinueWith(async (t) =>
+            {
+               await PollTasksAsync(callback, maxBatchSize, cancellationToken).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+         }
+         catch(TaskCanceledException)
+         {
+            //terminate polling as there is nothing to do when task is cancelled
+            return;
+         }
+         catch(Exception ex)
+         {
+            Console.WriteLine(ex.ToString());
+         }
+      }
+
+      private async Task<IReadOnlyCollection<QueueMessage>> ReceiveMessagesSafeAsync(int maxBatchSize, CancellationToken cancellationToken)
+      {
+         try
+         {
+            IReadOnlyCollection<QueueMessage> messages = await ReceiveMessagesAsync(maxBatchSize, cancellationToken).ConfigureAwait(false);
+
+            return messages;
+         }
+         catch(TaskCanceledException)
+         {
+            throw;   //bubble it up
+         }
+         catch(Exception ex)
+         {
+            Console.WriteLine(ex.ToString());
          }
 
-         await Task.Delay(TimeSpan.FromSeconds(_pollIntervalSeconds), cancellationToken).ContinueWith(async (t) =>
-         {
-            await PollTasksAsync(callback, maxBatchSize, cancellationToken);
-         });
+         return null;
       }
 
       /// <summary>
       /// See interface
       /// </summary>
       protected abstract Task<IReadOnlyCollection<QueueMessage>> ReceiveMessagesAsync(int maxBatchSize, CancellationToken cancellationToken);
+
+      /// <summary>
+      /// See interface
+      /// </summary>
+      public Task KeepAliveAsync(QueueMessage message, TimeSpan? timeToLive = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+      /// <summary>
+      /// see interface
+      /// </summary>
+      /// <param name="maxMessages"></param>
+      /// <param name="cancellationToken"></param>
+      /// <returns></returns>
+      public virtual Task<IReadOnlyCollection<QueueMessage>> PeekMessagesAsync(int maxMessages, CancellationToken cancellationToken = default)
+      {
+         throw new NotSupportedException();
+      }
    }
 }

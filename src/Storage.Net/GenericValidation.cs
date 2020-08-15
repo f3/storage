@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using Storage.Net.Blobs;
 
 namespace Storage.Net
 {
@@ -9,7 +11,6 @@ namespace Storage.Net
    /// </summary>
    public static class GenericValidation
    {
-      //private const int MaxBlobIdPartLength = 50;
       private const int MaxBlobPrefixLength = 50;
 
       /// <summary>
@@ -26,41 +27,42 @@ namespace Storage.Net
          {
             if (part.Length > MaxBlobPrefixLength)
                throw new ArgumentException(
-                  string.Format(Exceptions.BlobPrefix_TooLong, MaxBlobPrefixLength),
+                  string.Format("blob prefix cannot exceed {0} characters", MaxBlobPrefixLength),
                   nameof(prefix));
          }
       }
 
       /// <summary>
-      /// Validates blob ID
+      /// Validates blob full path
       /// </summary>
-      /// <param name="id"></param>
-      public static void CheckBlobId(string id)
+      /// <param name="fullPath"></param>
+      public static void CheckBlobFullPath(string fullPath)
       {
-         if (id == null) throw new ArgumentNullException(nameof(id));
-
-         //this validation just doesn't make sense and is causing problems
-         /*string[] parts = id.Split('/');
-
-         foreach (string part in parts)
-         {
-            if (part.Length > MaxBlobIdPartLength)
-               throw new ArgumentException(string.Format(Exceptions.BlobId_TooLong, MaxBlobIdPartLength),
-                  nameof(id));
-         }*/
+         if (fullPath == null) throw new ArgumentNullException(nameof(fullPath));
       }
 
       /// <summary>
-      /// Checks blob ID for generic rules
+      /// Checks blob full path for generic rules
       /// </summary>
-      public static void CheckBlobId(IEnumerable<string> ids)
+      public static void CheckBlobFullPaths(IEnumerable<string> fullPaths)
       {
-         if (ids == null) return;
+         if (fullPaths == null) return;
 
-         foreach (string id in ids)
+         foreach (string fullPath in fullPaths)
          {
-            CheckBlobId(id);
+            CheckBlobFullPath(fullPath);
          }
+      }
+
+      /// <summary>
+      /// Checks blob full path for generic rules
+      /// </summary>
+      public static void CheckBlobFullPaths(IEnumerable<Blob> blobs)
+      {
+         if(blobs == null)
+            return;
+
+         CheckBlobFullPaths(blobs.Select(b => b.FullPath));
       }
 
       /// <summary>

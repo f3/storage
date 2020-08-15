@@ -32,10 +32,28 @@ namespace Storage.Net.Messaging
       Task DeadLetterAsync(QueueMessage message, string reason, string errorDescription, CancellationToken cancellationToken = default);
 
       /// <summary>
+      /// Peeks messages from the queue, without changing their visibility or removing from the queue.
+      /// </summary>
+      /// <param name="maxMessages">Maximum number of messages to peek.</param>
+      /// <param name="cancellationToken"></param>
+      /// <returns></returns>
+      /// <exception cref="NotSupportedException">Thrown when peeking is not supported by the current provider</exception>
+      Task<IReadOnlyCollection<QueueMessage>> PeekMessagesAsync(int maxMessages, CancellationToken cancellationToken = default);
+
+      /// <summary>
       /// Starts automatic message pumping trying to use native features as much as possible. Message pump stops when you dispose the instance.
       /// Disposing the instance will also stop message pump for you.
       /// </summary>
-      Task StartMessagePumpAsync(Func<IReadOnlyCollection<QueueMessage>, Task> onMessageAsync, int maxBatchSize = 1, CancellationToken cancellationToken = default);
+      Task StartMessagePumpAsync(Func<IReadOnlyCollection<QueueMessage>, CancellationToken, Task> onMessageAsync, int maxBatchSize = 1, CancellationToken cancellationToken = default);
+
+      /// <summary>
+      /// Notifies the backend that processing is still happening and message should be marked alive.
+      /// </summary>
+      /// <param name="message"></param>
+      /// <param name="timeToLive">Optional time-to-live</param>
+      /// <param name="cancellationToken"></param>
+      /// <returns></returns>
+      Task KeepAliveAsync(QueueMessage message, TimeSpan? timeToLive = null, CancellationToken cancellationToken = default);
 
       /// <summary>
       /// Starts a new transaction

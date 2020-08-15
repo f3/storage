@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Text;
-using Storage.Net.Blob;
+﻿using System.Net;
+using Storage.Net.Blobs;
 using Storage.Net.ConnectionString;
-using Storage.Net.KeyValue;
 using Storage.Net.Messaging;
 
 namespace Storage.Net.Ftp
@@ -25,8 +21,6 @@ namespace Storage.Net.Ftp
          return null;
       }
 
-      public IKeyValueStorage CreateKeyValueStorage(StorageConnectionString connectionString) => null;
-      public IMessagePublisher CreateMessagePublisher(StorageConnectionString connectionString) => null;
-      public IMessageReceiver CreateMessageReceiver(StorageConnectionString connectionString) => null;
+      public IMessenger CreateMessenger(StorageConnectionString connectionString) => null;
    }
 }
